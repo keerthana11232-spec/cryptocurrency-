@@ -1,0 +1,90 @@
+import requests
+import pandas as pd
+import time
+import os
+from datetime import datetime
+from tabulate import tabulate  # For pretty terminal tables
+
+# Create a folder named "data" if it doesn't exist
+os.makedirs("data", exist_ok=True)
+
+# Excel file path
+excel_file = os.path.join("data", "crypto_prices.xlsx")
+
+def fetch_crypto_data():
+    """Fetch top 20 cryptocurrency data from CoinGecko API"""
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {
+        "vs_currency": "usd",
+        "order": "market_cap_desc",
+        "per_page": 10,   # Show top 10 for terminal clarity (you can change this)
+        "page": 1,
+        "sparkline": "false"
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=20)
+        response.raise_for_status()
+        data = response.json()
+
+        # Convert to DataFrame
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        df = pd.DataFrame([{
+            "Timestamp": timestamp,
+            "Rank": coin.get("market_cap_rank", ""),
+            "Coin Name": f"{coin.get('name', '')} ({coin.get('symbol', '').upper()})",
+            "Current Price (USD)": coin.get("current_price", 0),
+            "24h Change (%)": coin.get("price_change_percentage_24h", 0),
+            "Market Cap (USD)": coin.get("market_cap", 0)
+        } for coin in data])
+
+        return df
+
+    except Exception as e:
+        print(f"⚠️ Error fetching data: {e}")
+        return None
+
+
+def save_to_excel(df):
+    """Append new data to Excel file safely"""
+    if os.path.exists(excel_file):
+        try:
+            existing_df = pd.read_excel(excel_file)
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+            combined_df.to_excel(excel_file, index=False)
+        except PermissionError:
+            print("❌ Please close the Excel file before running again.")
+    else:
+        df.to_excel(excel_file, index=False)
+
+
+def main():
+    print("🚀 Starting Cryptocurrency Price Tracker...")
+    print("Data will be saved in: data/crypto_prices.xlsx")
+
+    for i in range(5):  # Runs 5 times (you can increase)
+        print(f"\n📊 Fetching data... (Iteration {i+1}/5)")
+        df = fetch_crypto_data()
+        if df is not None:
+            # Display in terminal
+            print("\n💹 Live Crypto Prices:\n")
+            print(tabulate(
+                df[["Rank", "Coin Name", "Current Price (USD)", "24h Change (%)"]],
+                headers="keys",
+                tablefmt="fancy_grid",
+                showindex=False,
+                floatfmt=".2f"
+            ))
+            
+            # Save to Excel
+            save_to_excel(df)
+            print(f"\n✅ Data saved at {datetime.now().strftime('%H:%M:%S')}")
+        else:
+            print("⚠️ No data fetched this time.")
+        time.sleep(10)  # Wait 10 seconds before next update
+
+    print("\n✅ Tracking complete! Check 'data/crypto_prices.xlsx'.")
+
+
+if __name__ == "__main__":
+    main()
